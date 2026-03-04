@@ -3,7 +3,7 @@ import {
   parseProject,
   parseHypothesis,
   parseStreamEntry,
-} from "./parser";
+} from "../src/parser";
 
 describe("parseProject", () => {
   it("parses valid PROJECT.md", () => {

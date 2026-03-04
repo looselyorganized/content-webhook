@@ -5,10 +5,10 @@
  * Usage: GITHUB_TOKEN=... SUPABASE_URL=... SUPABASE_SECRET_KEY=... bun run backfill.ts
  */
 
-import { fetchFileContent, fetchDirectoryContents, fetchContributors, deriveSlugFromRepo } from "./github";
-import { parseProject, parseHypothesis, parseStreamEntry } from "./parser";
-import { initSupabase, syncProjectContent, syncContributors } from "./sync";
-import type { SyncContext } from "./types";
+import { fetchFileContent, fetchDirectoryContents, fetchContributors, deriveSlugFromRepo } from "../src/github";
+import { parseProject, parseHypothesis, parseStreamEntry } from "../src/parser";
+import { initSupabase, syncProjectContent, syncContributors } from "../src/sync";
+import type { SyncContext } from "../src/types";
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SECRET_KEY = process.env.SUPABASE_SECRET_KEY;

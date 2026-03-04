@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { verifySignature } from "./verify";
+import { verifySignature } from "../src/verify";
 import { createHmac } from "crypto";
 
 const SECRET = "test-secret";

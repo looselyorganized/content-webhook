@@ -1,5 +1,5 @@
 import { describe, it, expect } from "bun:test";
-import { touchesLoDir, deriveSlugFromRepo } from "./github";
+import { touchesLoDir, deriveSlugFromRepo } from "../src/github";
 
 describe("touchesLoDir", () => {
   it("detects .lo/ file changes in commits", () => {

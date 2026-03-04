@@ -3,9 +3,10 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "start": "bun run index.ts",
-    "dev": "bun --watch run index.ts",
-    "test": "bun test"
+    "start": "bun run src/index.ts",
+    "dev": "bun --watch run src/index.ts",
+    "test": "bun test test/",
+    "backfill": "bun run scripts/backfill.ts"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2",
