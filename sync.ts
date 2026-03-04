@@ -19,31 +19,53 @@ export async function syncProjectContent(ctx: SyncContext): Promise<{ ok: boolea
   const now = new Date().toISOString();
 
   try {
-    // 1. Upsert project_content
+    // 1. Upsert projects row and resolve proj_id
+    let projId: string | null = null;
+
     if (ctx.project) {
       const { owner, name } = repoUrlParts(ctx.project.repo);
-      const { error } = await supabase.from("project_content").upsert(
-        {
-          content_slug: ctx.contentSlug,
-          title: ctx.project.title,
-          description: ctx.project.description,
-          status: ctx.project.status,
-          state: ctx.project.state,
-          topics: ctx.project.topics,
-          repo_url: ctx.project.repo ?? null,
-          repo_owner: owner ?? ctx.repoOwner,
-          repo_name: name ?? ctx.repoName,
-          stack: ctx.project.stack ?? [],
-          infrastructure: ctx.project.infrastructure ?? [],
-          agents: ctx.project.agents ?? [],
-          related_content: ctx.project.relatedContent ?? [],
-          body: ctx.project.body,
-          synced_at: now,
-        },
-        { onConflict: "content_slug" }
-      );
-      if (error) throw new Error(`project_content: ${error.message}`);
-      console.log(`  project_content: upserted ${ctx.contentSlug}`);
+      const { data, error } = await supabase
+        .from("projects")
+        .upsert(
+          {
+            content_slug: ctx.contentSlug,
+            title: ctx.project.title,
+            description: ctx.project.description,
+            status: ctx.project.status,
+            state: ctx.project.state,
+            topics: ctx.project.topics,
+            repo_url: ctx.project.repo ?? null,
+            repo_owner: owner ?? ctx.repoOwner,
+            repo_name: name ?? ctx.repoName,
+            stack: ctx.project.stack ?? [],
+            infrastructure: ctx.project.infrastructure ?? [],
+            agents: ctx.project.agents ?? [],
+            related_content: ctx.project.relatedContent ?? [],
+            body: ctx.project.body,
+            synced_at: now,
+          },
+          { onConflict: "content_slug" }
+        )
+        .select("proj_id")
+        .single();
+      if (error) throw new Error(`projects: ${error.message}`);
+      projId = data.proj_id;
+      console.log(`  projects: upserted ${ctx.contentSlug} (proj_id=${projId})`);
+    }
+
+    // If no project upserted, look up existing proj_id
+    if (!projId) {
+      const { data } = await supabase
+        .from("projects")
+        .select("proj_id")
+        .eq("content_slug", ctx.contentSlug)
+        .single();
+      projId = data?.proj_id ?? null;
+    }
+
+    if (!projId) {
+      console.warn(`  No proj_id found for ${ctx.contentSlug} — skipping child tables`);
+      return { ok: true };
     }
 
     // 2. Sync hypotheses (upsert + delete removed)
@@ -53,7 +75,7 @@ export async function syncProjectContent(ctx: SyncContext): Promise<{ ok: boolea
       for (const h of ctx.hypotheses) {
         const { error } = await supabase.from("hypotheses").upsert(
           {
-            content_slug: ctx.contentSlug,
+            proj_id: projId,
             id: h.id,
             statement: h.statement,
             status: h.status,
@@ -61,7 +83,7 @@ export async function syncProjectContent(ctx: SyncContext): Promise<{ ok: boolea
             revises_id: h.revisesId ?? null,
             notes: h.notes,
           },
-          { onConflict: "content_slug,id" }
+          { onConflict: "proj_id,id" }
         );
         if (error) console.warn(`  hypotheses/${h.id}: ${error.message}`);
       }
@@ -71,10 +93,10 @@ export async function syncProjectContent(ctx: SyncContext): Promise<{ ok: boolea
         await supabase
           .from("hypotheses")
           .delete()
-          .eq("content_slug", ctx.contentSlug)
+          .eq("proj_id", projId)
           .not("id", "in", `(${incomingIds.map((s) => `"${s}"`).join(",")})`);
       } else {
-        await supabase.from("hypotheses").delete().eq("content_slug", ctx.contentSlug);
+        await supabase.from("hypotheses").delete().eq("proj_id", projId);
       }
       console.log(`  hypotheses: synced ${ctx.hypotheses.length} entries`);
     }
@@ -86,7 +108,7 @@ export async function syncProjectContent(ctx: SyncContext): Promise<{ ok: boolea
       for (const entry of ctx.streamEntries) {
         const { error } = await supabase.from("project_stream").upsert(
           {
-            content_slug: ctx.contentSlug,
+            proj_id: projId,
             slug: entry.slug,
             title: entry.title,
             date: entry.date,
@@ -94,7 +116,7 @@ export async function syncProjectContent(ctx: SyncContext): Promise<{ ok: boolea
             body: entry.body,
             source: "webhook",
           },
-          { onConflict: "content_slug,slug" }
+          { onConflict: "proj_id,slug" }
         );
         if (error) console.warn(`  stream/${entry.slug}: ${error.message}`);
       }
@@ -103,7 +125,7 @@ export async function syncProjectContent(ctx: SyncContext): Promise<{ ok: boolea
       let deleteQuery = supabase
         .from("project_stream")
         .delete()
-        .eq("content_slug", ctx.contentSlug)
+        .eq("proj_id", projId)
         .eq("source", "webhook");
 
       if (incomingSlugs.length > 0) {
@@ -136,10 +158,24 @@ export async function syncContributors(
     agentName?: string;
   }>
 ): Promise<void> {
+  // Look up proj_id from content_slug
+  const { data } = await supabase
+    .from("projects")
+    .select("proj_id")
+    .eq("content_slug", contentSlug)
+    .single();
+
+  if (!data?.proj_id) {
+    console.warn(`  contributors: no proj_id for ${contentSlug} — skipping`);
+    return;
+  }
+
+  const projId = data.proj_id;
+
   for (const c of contributors) {
     const { error } = await supabase.from("project_contributors").upsert(
       {
-        content_slug: contentSlug,
+        proj_id: projId,
         username: c.username,
         avatar_url: c.avatarUrl,
         profile_url: c.profileUrl,
@@ -147,7 +183,7 @@ export async function syncContributors(
         type: c.type,
         agent_name: c.agentName ?? null,
       },
-      { onConflict: "content_slug,username" }
+      { onConflict: "proj_id,username" }
     );
     if (error) console.warn(`  contributor/${c.username}: ${error.message}`);
   }
